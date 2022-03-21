@@ -48,7 +48,7 @@ void bn_sub(bn *a, bn *b, bn *result)
         return;
     }
 
-    result->length = i;
+    result->length = MAX_LENGTH_BN;
     for (i = MAX_LENGTH_BN - 1; i >= 0; i--)
         result->num[i] = buf[i];
     for (i = result->length - 1; i > 0; i--)
@@ -166,7 +166,8 @@ char *bn_tostr(bn *a)
         if (i >> 5 > a->length)
             carry = 0;
         else
-            carry = (a->num[i >> 5] & ((unsigned int)1 << (i & 0x1F))) >> (i & 0x1F);
+            carry = (a->num[i >> 5] & ((unsigned int) 1 << (i & 0x1F))) >>
+                    (i & 0x1F);
 
         for (int j = str_size - 2; j >= 0; j--) {
             buf[j] += buf[j] - '0' + carry;

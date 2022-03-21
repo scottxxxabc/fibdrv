@@ -76,6 +76,9 @@ static int fib_sequence_fd(long long k, char __user *buf)
     int h = 64 - (__builtin_clzll(k));
     for (int mask = 1 << (h - 1); mask; mask >>= 1) {
         bn tmp1, tmp2, tmp3;
+        bn_init(&tmp1);
+        bn_init(&tmp2);
+        bn_init(&tmp3);
         bn_ls(b, 1, &tmp1);
         bn_sub(&tmp1, a, &tmp2);
         bn_mul(&tmp2, a, &tmp1);
@@ -94,7 +97,7 @@ static int fib_sequence_fd(long long k, char __user *buf)
 
     char *str = bn_tostr(a);
     int n = strlen(str);
-    if (copy_to_user(buf, str, n + 1))
+    if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
     kfree(a);
     kfree(b);
