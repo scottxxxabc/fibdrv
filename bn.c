@@ -23,15 +23,7 @@ void bn_init(bn *a)
     }
 }
 
-void bn_copy(bn *dest, bn *src)
-{
-    if (!src)
-        return;
-    if (!dest)
-        bn_init(dest);
-    memcpy(dest->num, src->num, MAX_LENGTH_BN * sizeof(uint32_t));
-    dest->length = src->length;
-}
+
 
 // nonnull 123
 void bn_sub(bn *a, bn *b, bn *result)
@@ -57,11 +49,13 @@ void bn_sub(bn *a, bn *b, bn *result)
     }
 
     result->length = i;
+    for (i = MAX_LENGTH_BN - 1; i >= 0; i--)
+        result->num[i] = buf[i];
     for (i = result->length - 1; i > 0; i--)
         if (result->num[i] == 0)
             result->length--;
-    for (i = MAX_LENGTH_BN - 1; i >= 0; i--)
-        result->num[i] = buf[i];
+        else
+            break;
 }
 
 
@@ -110,14 +104,12 @@ void bn_mul_single(bn *a, const uint32_t b, bn *result)
     uint32_t carry = 0;
     uint64_t sum;
     while (i < a->length) {
-        if (a->num[i] == 0)
-            break;
         sum = (uint64_t) a->num[i] * (uint64_t) b + carry;
         carry = sum >> 32;
         buf[i] = (uint32_t) sum;
         i++;
     }
-    if ((carry && i < MAX_LENGTH_BN))
+    if (carry && (i < MAX_LENGTH_BN))
         buf[i++] = carry;
 
     for (int j = 0; j < MAX_LENGTH_BN; j++)
@@ -131,7 +123,6 @@ void bn_mul(bn *a, bn *b, bn *result)
     bn *sum = kmalloc(sizeof(bn), GFP_KERNEL);
     bn_init(sum);
     bn *tmp = kmalloc(sizeof(bn), GFP_KERNEL);
-    ;
     bn_init(tmp);
 
 
@@ -158,9 +149,9 @@ void bn_ls(bn *a, unsigned n, bn *result)
             result->length = i + 1;
         i--;
     }
-    result->num[i] = (a->num[i] << n);
-    if (result->num[i] && result->length < i + 1)
-        result->length = i + 1;
+    result->num[0] = (a->num[0] << n);
+    if (result->num[0] && result->length < 1)
+        result->length = 1;
 }
 
 char *bn_tostr(bn *a)
@@ -175,8 +166,7 @@ char *bn_tostr(bn *a)
         if (i >> 5 > a->length)
             carry = 0;
         else
-            carry = (a->num[i >> 5] & ((unsigned int) 1 << (i & 0x1F))) >>
-                    (i & 0x1F);
+            carry = (a->num[i >> 5] & ((unsigned int)1 << (i & 0x1F))) >> (i & 0x1F);
 
         for (int j = str_size - 2; j >= 0; j--) {
             buf[j] += buf[j] - '0' + carry;
