@@ -29,3 +29,10 @@ dkms.conf
 # test-oriented
 client
 out
+
+test.c
+test
+
+0
+*.json
+.vscode/*.json

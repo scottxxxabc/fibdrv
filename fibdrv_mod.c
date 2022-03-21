@@ -6,6 +6,10 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/uaccess.h>
+
+#include "bn.h"
+#define USE_FD 1
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -17,26 +21,85 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
+#define MAX_LENGTH 10000
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
+static ktime_t kt;
 
-static long long fib_sequence(long long k)
+static int fib_sequence(long long k, char __user *buf)
 {
-    /* FIXME: use clz/ctz and fast algorithms to speed up */
-    long long f[k + 2];
+    /*FIXME: use clz/ctz and fast algorithms to speed up */
 
-    f[0] = 0;
-    f[1] = 1;
+    bn *a = NULL, *b = NULL, *c = NULL;
+    a = kmalloc(sizeof(bn), GFP_KERNEL);
+    b = kmalloc(sizeof(bn), GFP_KERNEL);
+    c = kmalloc(sizeof(bn), GFP_KERNEL);
+    bn_init(a);
+    bn_init(b);
+    bn_init(c);
+    b->num[0] = 1;
 
     for (int i = 2; i <= k; i++) {
-        f[i] = f[i - 1] + f[i - 2];
+        bn_add(a, b, c);
+
+        bn *tmp = c;
+        c = a;
+        a = b;
+        b = tmp;
     }
 
-    return f[k];
+    char *str = bn_tostr(b);
+    int n = strlen(str);
+    if (copy_to_user(buf, str, strlen(str) + 1))
+        return -EFAULT;
+
+    kfree(a);
+    kfree(b);
+    kfree(c);
+    kfree(str);
+    return n;
+}
+
+static int fib_sequence_fd(long long k, char __user *buf)
+{
+    bn *a = kmalloc(sizeof(bn), GFP_KERNEL),
+       *b = kmalloc(sizeof(bn), GFP_KERNEL);
+    bn_init(a);
+    bn_init(b);
+    a->num[0] = 0;
+    b->num[0] = 1;
+    b->length = 1;
+
+    int h = 64 - (__builtin_clzll(k));
+    for (int mask = 1 << (h - 1); mask; mask >>= 1) {
+        bn tmp1, tmp2, tmp3;
+        bn_ls(b, 1, &tmp1);
+        bn_sub(&tmp1, a, &tmp2);
+        bn_mul(&tmp2, a, &tmp1);
+
+        bn_mul(a, a, &tmp2);
+        *a = tmp1;
+        bn_mul(b, b, &tmp3);
+        bn_add(&tmp2, &tmp3, &tmp1);
+        *b = tmp1;
+        if (mask & k) {
+            bn_add(a, b, &tmp1);
+            *a = *b;
+            *b = tmp1;
+        }
+    }
+
+    char *str = bn_tostr(a);
+    int n = strlen(str);
+    if (copy_to_user(buf, str, n + 1))
+        return -EFAULT;
+    kfree(a);
+    kfree(b);
+    kfree(str);
+    return n;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -56,11 +119,25 @@ static int fib_release(struct inode *inode, struct file *file)
 
 /* calculate the fibonacci number at given offset */
 static ssize_t fib_read(struct file *file,
-                        char *buf,
+                        char __user *buf,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence(*offset);
+    int result;
+    kt = ktime_get();
+    if (USE_FD) {
+        kt = ktime_get();
+        result = fib_sequence_fd(*offset, buf);
+        kt = ktime_sub(ktime_get(), kt);
+    }
+
+    else {
+        kt = ktime_get();
+        result = fib_sequence(*offset, buf);
+        kt = ktime_sub(ktime_get(), kt);
+    }
+
+    return (ssize_t) result;
 }
 
 /* write operation is skipped */
@@ -69,7 +146,7 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return 1;
+    return ktime_to_ns(kt);
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)
