@@ -40,3 +40,19 @@ check: all
 	$(MAKE) unload
 	$(call pass)
 	@scripts/verify.py
+
+LOOP = 10
+PREFIX = time/
+POSTFIX = .time
+plot: all
+	$(MAKE) unload
+	$(MAKE) load
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		sudo ./client > out; \
+		sudo chown $$(whoami) time/time; \
+		mv time/time ${PREFIX}$$i${POSTFIX}; \
+	done
+	$(MAKE) unload
+	@./scripts/time.py
+	gnuplot scripts/time.gp
+	eog time.png

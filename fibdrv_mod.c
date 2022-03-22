@@ -27,7 +27,22 @@ static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
-static ktime_t kt;
+static ssize_t time1, time2, time3;
+
+static long long fib_sequence_ori(long long k)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    long long f[120];
+
+    f[0] = 0;
+    f[1] = 1;
+
+    for (int i = 2; i <= k; i++) {
+        f[i] = f[i - 1] + f[i - 2];
+    }
+
+    return f[k];
+}
 
 static int fib_sequence(long long k, char __user *buf)
 {
@@ -50,17 +65,17 @@ static int fib_sequence(long long k, char __user *buf)
         a = b;
         b = tmp;
     }
-
+    /*
     char *str = bn_tostr(b);
     int n = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
-
+    */
     kfree(a);
     kfree(b);
     kfree(c);
-    kfree(str);
-    return n;
+    //kfree(str);
+    return 1;
 }
 
 static int fib_sequence_fd(long long k, char __user *buf)
@@ -94,15 +109,16 @@ static int fib_sequence_fd(long long k, char __user *buf)
             *b = tmp1;
         }
     }
-
+    /*
     char *str = bn_tostr(a);
     int n = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
+    */
     kfree(a);
     kfree(b);
-    kfree(str);
-    return n;
+    //kfree(str);
+    return 1;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -127,20 +143,22 @@ static ssize_t fib_read(struct file *file,
                         loff_t *offset)
 {
     int result;
-    kt = ktime_get();
-    if (USE_FD) {
-        kt = ktime_get();
-        result = fib_sequence_fd(*offset, buf);
-        kt = ktime_sub(ktime_get(), kt);
-    }
+    ktime_t kt1 = ktime_get();
+    result = fib_sequence_ori(*offset);
+    kt1 = ktime_sub(ktime_get(), kt1);
+    
+    ktime_t kt2 = ktime_get();
+    result = fib_sequence(*offset, buf);
+    kt2 = ktime_sub(ktime_get(), kt2);
 
-    else {
-        kt = ktime_get();
-        result = fib_sequence(*offset, buf);
-        kt = ktime_sub(ktime_get(), kt);
-    }
-
-    return (ssize_t) result;
+    ktime_t kt3 = ktime_get();
+    result = fib_sequence_fd(*offset, buf);
+    kt3 = ktime_sub(ktime_get(), kt3);
+    
+    time1 = ktime_to_ns(kt1);
+    time2 = ktime_to_ns(kt2);
+    time3 = ktime_to_ns(kt3);
+    return result;
 }
 
 /* write operation is skipped */
@@ -149,7 +167,16 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return ktime_to_ns(kt);
+    switch (*offset) {
+    case 1:
+        return time1;
+    case 2:
+        return time2;
+    case 3:
+        return time3;
+    default:
+        return current->pid;
+    }
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)

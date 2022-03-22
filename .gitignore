@@ -36,3 +36,4 @@ test
 0
 *.json
 .vscode/*.json
+time/
