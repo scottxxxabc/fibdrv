@@ -44,6 +44,28 @@ static long long fib_sequence_ori(long long k)
     return f[k];
 }
 
+static int my_copy_to_user(const bn *bignum, char __user *buf)
+{
+    int i = MAX_LENGTH_BN - 1;
+    for (; bignum->num[i] == 0; i--)
+        ;
+    int lzbyte = __builtin_clz(bignum->num[i]) >> 3;
+
+    if (lzbyte == 0) {
+        copy_to_user(buf, bignum->num, sizeof(int32_t) * (i + 1));
+        return sizeof(int32_t) * (i + 1);
+    }
+
+    size_t size = sizeof(int32_t) * (i + 1) - lzbyte;
+    char *tmp = (char *) bignum->num;
+    copy_to_user(buf, tmp, sizeof(int32_t) * i);
+    tmp += sizeof(int32_t) * i;
+    copy_to_user(buf + sizeof(int32_t) * i, tmp + lzbyte,
+                 (sizeof(int32_t) - lzbyte) * sizeof(char));
+
+    return size;
+}
+
 static int fib_sequence(long long k, char __user *buf)
 {
     /*FIXME: use clz/ctz and fast algorithms to speed up */
@@ -70,12 +92,14 @@ static int fib_sequence(long long k, char __user *buf)
     int n = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
+    kfree(str);
     */
+    size_t sz = my_copy_to_user(a, buf);
     kfree(a);
     kfree(b);
     kfree(c);
-    //kfree(str);
-    return 1;
+
+    return sz;
 }
 
 static int fib_sequence_fd(long long k, char __user *buf)
@@ -114,11 +138,15 @@ static int fib_sequence_fd(long long k, char __user *buf)
     int n = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
+    kfree(str);
     */
+
+    size_t sz = my_copy_to_user(a, buf);
+
     kfree(a);
     kfree(b);
-    //kfree(str);
-    return 1;
+
+    return sz;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -146,7 +174,7 @@ static ssize_t fib_read(struct file *file,
     ktime_t kt1 = ktime_get();
     result = fib_sequence_ori(*offset);
     kt1 = ktime_sub(ktime_get(), kt1);
-    
+
     ktime_t kt2 = ktime_get();
     result = fib_sequence(*offset, buf);
     kt2 = ktime_sub(ktime_get(), kt2);
@@ -154,7 +182,7 @@ static ssize_t fib_read(struct file *file,
     ktime_t kt3 = ktime_get();
     result = fib_sequence_fd(*offset, buf);
     kt3 = ktime_sub(ktime_get(), kt3);
-    
+
     time1 = ktime_to_ns(kt1);
     time2 = ktime_to_ns(kt2);
     time3 = ktime_to_ns(kt3);

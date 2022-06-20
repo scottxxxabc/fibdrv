@@ -55,4 +55,4 @@ plot: all
 	$(MAKE) unload
 	@./scripts/time.py
 	gnuplot scripts/time.gp
-	eog time.png
+	eog time_iso.png

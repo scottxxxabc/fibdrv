@@ -28,4 +28,5 @@ with open('time/time', 'w') as f:
         out1 = [arr1[j][i] for j in range(len(arr1))]
         out2 = [arr2[j][i] for j in range(len(arr2))]
         out3 = [arr3[j][i] for j in range(len(arr3))]
-        f.write('%i %f %f %f\n' % (i, sum(out1)/len(out1), sum(out2)/len(out2), sum(out3)/len(out3)))
+        #f.write('%i %f %f %f\n' % (i, sum(out1)/len(out1), sum(out2)/len(out2), sum(out3)/len(out3)))
+        f.write('%i %f %f\n' % (i, sum(out2)/len(out2), sum(out3)/len(out3)))
