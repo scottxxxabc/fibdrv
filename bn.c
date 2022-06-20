@@ -33,7 +33,7 @@ void bn_sub(bn *a, bn *b, bn *result)
     int i = 0;
     uint32_t carry = 0;
     while (i < max) {
-        if (a->num[i] - carry < b->num[i]) {
+        if (a->num[i] < b->num[i] + carry) {
             buf[i] = UINT_MAX - b->num[i] + a->num[i] + 1 - carry;
             carry = 1;
         } else {

@@ -94,12 +94,12 @@ static int fib_sequence(long long k, char __user *buf)
         return -EFAULT;
     kfree(str);
     */
-    size_t sz = my_copy_to_user(a, buf);
+    //size_t sz = my_copy_to_user(a, buf);
     kfree(a);
     kfree(b);
     kfree(c);
 
-    return sz;
+    return 1;
 }
 
 static int fib_sequence_fd(long long k, char __user *buf)
