@@ -4,8 +4,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-
-#define MAX_LENGTH_BN 50
+#define MAX_LENGTH_BN 500
 
 
 typedef struct bignum {

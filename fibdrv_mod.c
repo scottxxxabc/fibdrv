@@ -51,19 +51,11 @@ static int my_copy_to_user(const bn *bignum, char __user *buf)
         ;
     int lzbyte = __builtin_clz(bignum->num[i]) >> 3;
 
-    if (lzbyte == 0) {
-        copy_to_user(buf, bignum->num, sizeof(int32_t) * (i + 1));
-        return sizeof(int32_t) * (i + 1);
-    }
-
     size_t size = sizeof(int32_t) * (i + 1) - lzbyte;
-    char *tmp = (char *) bignum->num;
-    copy_to_user(buf, tmp, sizeof(int32_t) * i);
-    tmp += sizeof(int32_t) * i;
-    copy_to_user(buf + sizeof(int32_t) * i, tmp + lzbyte,
-                 (sizeof(int32_t) - lzbyte) * sizeof(char));
+    copy_to_user(buf, bignum->num, size);
 
     return size;
+
 }
 
 static int fib_sequence(long long k, char __user *buf)
