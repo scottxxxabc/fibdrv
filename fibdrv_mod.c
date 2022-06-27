@@ -8,8 +8,15 @@
 #include <linux/mutex.h>
 #include <linux/uaccess.h>
 
-#include "bn.h"
+#include "bn_d.h"
 #define USE_FD 1
+
+#define SWAP(a, b, type) \
+    do {                 \
+        type tmp = a;    \
+        a = b;           \
+        b = tmp;         \
+    } while (0)
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -27,7 +34,7 @@ static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
-static ssize_t time1, time2, time3;
+static ssize_t time1 = 0, time2 = 0, time3 = 0;
 
 static long long fib_sequence_ori(long long k)
 {
@@ -46,7 +53,7 @@ static long long fib_sequence_ori(long long k)
 
 static int my_copy_to_user(const bn *bignum, char __user *buf)
 {
-    int i = MAX_LENGTH_BN - 1;
+    int i = bignum->max_length - 1;
     for (; bignum->num[i] == 0; i--)
         ;
     int lzbyte = __builtin_clz(bignum->num[i]) >> 3;
@@ -55,20 +62,27 @@ static int my_copy_to_user(const bn *bignum, char __user *buf)
     copy_to_user(buf, bignum->num, size);
 
     return size;
+}
 
+static unsigned long long fib_size(long long n)
+{
+    if (n <= 47)
+        return 1;
+    long long tmp = (-3628013 + n * 2169507) / 100000000 + 1;
+    return tmp;
 }
 
 static int fib_sequence(long long k, char __user *buf)
 {
     /*FIXME: use clz/ctz and fast algorithms to speed up */
-
+    unsigned int esz = fib_size(k);
     bn *a = NULL, *b = NULL, *c = NULL;
     a = kmalloc(sizeof(bn), GFP_KERNEL);
     b = kmalloc(sizeof(bn), GFP_KERNEL);
     c = kmalloc(sizeof(bn), GFP_KERNEL);
-    bn_init(a);
-    bn_init(b);
-    bn_init(c);
+    bn_init(a, esz);
+    bn_init(b, esz);
+    bn_init(c, esz);
     b->num[0] = 1;
 
     for (int i = 2; i <= k; i++) {
@@ -79,64 +93,80 @@ static int fib_sequence(long long k, char __user *buf)
         a = b;
         b = tmp;
     }
-    /*
+
     char *str = bn_tostr(b);
     int n = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
     kfree(str);
-    */
-    //size_t sz = my_copy_to_user(a, buf);
-    kfree(a);
-    kfree(b);
-    kfree(c);
+
+    // size_t sz = my_copy_to_user(a, buf);
+
+    bn_free(a);
+    bn_free(b);
+    bn_free(c);
 
     return 1;
 }
 
+
 static int fib_sequence_fd(long long k, char __user *buf)
 {
+    unsigned int esz = fib_size(k + 1);
+
     bn *a = kmalloc(sizeof(bn), GFP_KERNEL),
        *b = kmalloc(sizeof(bn), GFP_KERNEL);
-    bn_init(a);
-    bn_init(b);
+    bn_init(a, esz);
+    bn_init(b, esz);
     a->num[0] = 0;
     b->num[0] = 1;
     b->length = 1;
+    bn *tmp1 = kmalloc(sizeof(bn), GFP_KERNEL),
+       *tmp2 = kmalloc(sizeof(bn), GFP_KERNEL),
+       *tmp3 = kmalloc(sizeof(bn), GFP_KERNEL);
+    bn_init(tmp1, esz);
+    bn_init(tmp2, esz);
+    bn_init(tmp3, esz);
+
+    if (!a || !b || !tmp1 || !tmp2 || !tmp3)
+        return 0;
+
 
     int h = 64 - (__builtin_clzll(k));
     for (int mask = 1 << (h - 1); mask; mask >>= 1) {
-        bn tmp1, tmp2, tmp3;
-        bn_init(&tmp1);
-        bn_init(&tmp2);
-        bn_init(&tmp3);
-        bn_ls(b, 1, &tmp1);
-        bn_sub(&tmp1, a, &tmp2);
-        bn_mul(&tmp2, a, &tmp1);
+        bn_init(tmp1, esz);
+        bn_init(tmp2, esz);
+        bn_init(tmp3, esz);
+        bn_ls(b, 1, tmp1);
+        bn_sub(tmp1, a, tmp2);
+        bn_mul(tmp2, a, tmp1);
 
-        bn_mul(a, a, &tmp2);
-        *a = tmp1;
-        bn_mul(b, b, &tmp3);
-        bn_add(&tmp2, &tmp3, &tmp1);
-        *b = tmp1;
+        bn_mul(a, a, tmp2);
+        SWAP(a, tmp1, bn *);
+        bn_mul(b, b, tmp3);
+        bn_add(tmp2, tmp3, tmp1);
+        SWAP(b, tmp1, bn *);
         if (mask & k) {
-            bn_add(a, b, &tmp1);
-            *a = *b;
-            *b = tmp1;
+            bn_add(a, b, tmp1);
+            SWAP(a, b, bn *);
+            SWAP(b, tmp1, bn *);
         }
     }
-    /*
+
     char *str = bn_tostr(a);
-    int n = strlen(str);
+    int sz = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
     kfree(str);
-    */
 
-    size_t sz = my_copy_to_user(a, buf);
 
-    kfree(a);
-    kfree(b);
+    // size_t sz = my_copy_to_user(a, buf);
+
+    bn_free(a);
+    bn_free(b);
+    bn_free(tmp1);
+    bn_free(tmp2);
+    bn_free(tmp3);
 
     return sz;
 }
@@ -163,6 +193,7 @@ static ssize_t fib_read(struct file *file,
                         loff_t *offset)
 {
     int result;
+    /*
     ktime_t kt1 = ktime_get();
     result = fib_sequence_ori(*offset);
     kt1 = ktime_sub(ktime_get(), kt1);
@@ -170,14 +201,14 @@ static ssize_t fib_read(struct file *file,
     ktime_t kt2 = ktime_get();
     result = fib_sequence(*offset, buf);
     kt2 = ktime_sub(ktime_get(), kt2);
-
+    */
     ktime_t kt3 = ktime_get();
     result = fib_sequence_fd(*offset, buf);
     kt3 = ktime_sub(ktime_get(), kt3);
 
-    time1 = ktime_to_ns(kt1);
-    time2 = ktime_to_ns(kt2);
-    time3 = ktime_to_ns(kt3);
+    // time1 = ktime_to_ns(kt1);
+    // time2 = ktime_to_ns(kt2);
+    // time3 = ktime_to_ns(kt3);
     return result;
 }
 
