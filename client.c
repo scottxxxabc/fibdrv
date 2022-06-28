@@ -129,7 +129,7 @@ int main()
     }
 
 
-    // munlockall();
+    munlockall();
     close(fd);
     fclose(fp);
     return 0;
