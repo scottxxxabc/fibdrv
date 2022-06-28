@@ -38,7 +38,6 @@ static ssize_t time1 = 0, time2 = 0, time3 = 0;
 
 static long long fib_sequence_ori(long long k)
 {
-    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
     long long f[120];
 
     f[0] = 0;
@@ -74,7 +73,6 @@ static unsigned long long fib_size(long long n)
 
 static int fib_sequence(long long k, char __user *buf)
 {
-    /*FIXME: use clz/ctz and fast algorithms to speed up */
     unsigned int esz = fib_size(k);
     bn *a = NULL, *b = NULL, *c = NULL;
     a = kmalloc(sizeof(bn), GFP_KERNEL);
@@ -83,7 +81,14 @@ static int fib_sequence(long long k, char __user *buf)
     bn_init(a, esz);
     bn_init(b, esz);
     bn_init(c, esz);
+    if (!a || !b || !c) {
+        bn_free(a);
+        bn_free(b);
+        bn_free(c);
+        return 0;
+    }
     b->num[0] = 1;
+
 
     for (int i = 2; i <= k; i++) {
         bn_add(a, b, c);
@@ -93,20 +98,21 @@ static int fib_sequence(long long k, char __user *buf)
         a = b;
         b = tmp;
     }
-
+    size_t sz = 0;
+    /*
     char *str = bn_tostr(b);
-    int n = strlen(str);
+    sz = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
     kfree(str);
-
-    // size_t sz = my_copy_to_user(a, buf);
+    */
+    sz = my_copy_to_user(a, buf);
 
     bn_free(a);
     bn_free(b);
     bn_free(c);
 
-    return 1;
+    return sz;
 }
 
 
@@ -128,8 +134,15 @@ static int fib_sequence_fd(long long k, char __user *buf)
     bn_init(tmp2, esz);
     bn_init(tmp3, esz);
 
-    if (!a || !b || !tmp1 || !tmp2 || !tmp3)
+    if (!a || !b || !tmp1 || !tmp2 || !tmp3) {
+        bn_free(a);
+        bn_free(b);
+        bn_free(tmp1);
+        bn_free(tmp2);
+        bn_free(tmp3);
         return 0;
+    }
+
 
 
     int h = 64 - (__builtin_clzll(k));
@@ -153,14 +166,16 @@ static int fib_sequence_fd(long long k, char __user *buf)
         }
     }
 
+    size_t sz = 0;
+    /*
     char *str = bn_tostr(a);
-    int sz = strlen(str);
+    sz = strlen(str);
     if (copy_to_user(buf, str, strlen(str) + 1))
         return -EFAULT;
     kfree(str);
+    */
 
-
-    // size_t sz = my_copy_to_user(a, buf);
+    sz = my_copy_to_user(a, buf);
 
     bn_free(a);
     bn_free(b);
@@ -197,18 +212,18 @@ static ssize_t fib_read(struct file *file,
     ktime_t kt1 = ktime_get();
     result = fib_sequence_ori(*offset);
     kt1 = ktime_sub(ktime_get(), kt1);
-
+    */
     ktime_t kt2 = ktime_get();
     result = fib_sequence(*offset, buf);
     kt2 = ktime_sub(ktime_get(), kt2);
-    */
+
     ktime_t kt3 = ktime_get();
     result = fib_sequence_fd(*offset, buf);
     kt3 = ktime_sub(ktime_get(), kt3);
 
     // time1 = ktime_to_ns(kt1);
-    // time2 = ktime_to_ns(kt2);
-    // time3 = ktime_to_ns(kt3);
+    time2 = ktime_to_ns(kt2);
+    time3 = ktime_to_ns(kt3);
     return result;
 }
 

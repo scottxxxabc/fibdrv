@@ -1,16 +1,17 @@
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <sched.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 
 #define FIB_DEV "/dev/fibonacci"
-#define MAX_LENGTH_BN 500
+#define MAX_LENGTH_BN 1000
 typedef struct bignum {
     uint32_t num[MAX_LENGTH_BN];
     unsigned int length;
@@ -65,8 +66,7 @@ int main()
     size_t sz;
 
     char buf[10000];
-    // char write_buf[] = "testing writing";
-    int offset = 100; /* TODO: try test something bigger than the limit */
+    int offset = 1000;
     int fd = open(FIB_DEV, O_RDWR);
     if (fd < 0) {
         perror("Failed to open character device");
@@ -78,6 +78,8 @@ int main()
         exit(1);
     }
 
+
+
     lseek(fd, 0, SEEK_SET);
     long long pid = write(fd, buf, 0);
     cpu_set_t cpuset;
@@ -87,23 +89,28 @@ int main()
         exit(1);
     }
 
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) < 0) {
+        perror("mlockall");
+        return 1;
+    }
+
     for (int i = 0; i <= offset; i++) {
         lseek(fd, i, SEEK_SET);
         sz = read(fd, buf, 1);
-        
+    }
+
+    for (int i = 0; i <= offset; i++) {
+        lseek(fd, i, SEEK_SET);
+        sz = read(fd, buf, 1);
+
         bn a;
         bn_init(&a);
 
-        size_t j = 0;
-        int idx = 0;
-        for (; j < sz - (sz & 0x3); j += sizeof(int32_t))
-            a.num[idx++] = *((int32_t *) (buf + j));
-
-        for (int k = 0; k < (sz & 0x3); k++)
-            a.num[idx] |= (*(buf + sz - (sz & 0x3))) << k * 8;
-
-        
-        a.length = idx + 1;
+        memcpy(a.num, buf, sz);
+        int j = MAX_LENGTH_BN;
+        for (; a.num[j] == 0; j--)
+            ;
+        a.length = j + 1;
         char *str = bn_tostr_client(&a);
 
         printf("Reading from " FIB_DEV
@@ -112,27 +119,17 @@ int main()
                i, str);
         free(str);
 
-        /*
-        printf("Reading from " FIB_DEV
-               " at offset %d, returned the sequence "
-               "%s.\n",
-               i, buf);
-        
-        
-        lseek(fd, 1, SEEK_SET);
-        long long sz1 = write(fd, buf, 0);
+
 
         lseek(fd, 2, SEEK_SET);
         long long sz2 = write(fd, buf, 0);
         lseek(fd, 3, SEEK_SET);
         long long sz3 = write(fd, buf, 0);
-        printf("%d %lld %lld %lld\n", i, sz1, sz2, sz3);
-        fprintf(fp, "%d %lld %lld %lld\n", i, sz1, sz2, sz3);
-        */
+        fprintf(fp, "%d %lld %lld\n", i, sz2, sz3);
     }
 
 
-
+    // munlockall();
     close(fd);
     fclose(fp);
     return 0;
