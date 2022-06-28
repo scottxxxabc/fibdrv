@@ -10,7 +10,7 @@ void bn_init(bn *a, unsigned int size)
     if (!a) {
         a = kzalloc(sizeof(bn), GFP_KERNEL);
         a->num = kzalloc(sizeof(uint32_t) * size, GFP_KERNEL);
-        if (a->num) {
+        if (!a->num) {
             a->length = 0;
             a->max_length = 0;
             return;
